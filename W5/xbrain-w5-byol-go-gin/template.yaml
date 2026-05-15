@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: BYOL challenge — Go Gin on Lambda (your job to fill in the gaps)
+
+# ── Your tasks ─────────────────────────────────────────────────────────
+# 1. server/server.go + cmd/local/main.go work locally
+#    (`go run ./cmd/local` → http://localhost:8080). Confirm.
+# 2. Decide HOW to put this on Lambda. Options to consider:
+#       a) aws-lambda-go-api-proxy/gin   — add `main.go` at repo root, ~8 lines
+#                                          (V2 for HTTP API; V1 for REST API)
+#       b) AWS Lambda Web Adapter        — Layer + run.sh; deploy gin binary as-is
+#       c) Plain aws-lambda-go           — write your own router → APIGatewayV2Event
+#                                          translation (high diff, ~40 lines)
+# 3. Fill in the `# TODO:` markers below.
+# 4. `sam build && sam deploy --guided` (region must be `us-west-2`).
+# ────────────────────────────────────────────────────────────────────────
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 256
+    Runtime: provided.al2023 # custom runtime — Lambda invokes a binary named `bootstrap`
+    Architectures:
+      - arm64
+
+Resources:
+  GinFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: linh-byol-go-gin
+      CodeUri: .
+      # Handler sẽ là tên file binary xuất ra, Lambda yêu cầu là 'bootstrap'
+      Handler: bootstrap
+      Runtime: provided.al2023
+    Metadata:
+      BuildMethod: go1.x # Sử dụng trình build Go của SAM, không cần 'make'
+      # TODO (Web Adapter route only): uncomment + pin the latest ARN for us-west-2 + arm64.
+      # See https://github.com/awslabs/aws-lambda-web-adapter/releases
+      # Layers:
+      #   - arn:aws:lambda:us-west-2:753240598075:layer:LambdaAdapterLayerArm64:25
+      # Environment:
+      #   Variables:
+      #     AWS_LWA_PORT: '8080'
+      #     PORT: '8080'
+      Events:
+        ApiCatchAll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref GinHttpApi
+            Path: /{proxy+}
+            Method: ANY
+            PayloadFormatVersion: "2.0"
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref GinHttpApi
+            Path: /
+            Method: ANY
+            PayloadFormatVersion: "2.0"
+
+  GinHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+
+  GinLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GinFunction}
+      RetentionInDays: 7
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${GinHttpApi}.execute-api.${AWS::Region}.amazonaws.com
