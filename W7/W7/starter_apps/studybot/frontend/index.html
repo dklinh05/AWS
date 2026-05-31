@@ -419,6 +419,17 @@
     <div class="doc-list" id="docs"><div class="empty">No documents yet — upload one above.</div></div>
   </section>
 
+  <section class="card">
+    <div class="card-header">
+      <h2><span class="step">5</span>Study History (Dashboard)</h2>
+      <button class="ghost" onclick="loadHistory()">Refresh</button>
+    </div>
+    <p class="muted" style="margin:0 0 0.75rem; font-size:0.88rem;">Track your recent questions and studied topics below:</p>
+    <div class="query-list" id="recent-queries" style="display: flex; flex-direction: column; gap: 0.8rem;">
+      <div class="empty">No questions asked yet.</div>
+    </div>
+  </section>
+
   <details>
     <summary>Raw API responses (debug)</summary>
     <pre id="debug-log">No requests yet.</pre>
@@ -553,6 +564,7 @@ async function ask() {
   } else {
     $('citations').innerHTML = '<div class="muted" style="font-size:0.82rem; margin-top:0.6rem;">No citations matched. Try a question closer to your uploaded content.</div>';
   }
+  loadHistory();
 }
 
 $('question').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
@@ -701,11 +713,28 @@ async function refresh() {
   `).join('');
 }
 
+async function loadHistory() {
+  const res = await call('/queries/recent');
+  const out = $('recent-queries');
+  if (!res.ok || !res.body.queries || !res.body.queries.length) {
+    out.innerHTML = '<div class="empty">No questions asked yet.</div>';
+    return;
+  }
+  out.innerHTML = res.body.queries.map(q => `
+    <div class="history-item" style="border-bottom: 1px solid var(--border); padding: 0.6rem 0; display: flex; flex-direction: column; gap: 0.25rem;">
+      <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-dark);">Q: ${String(q.query).replace(/</g, '&lt;')}</div>
+      <div style="color: var(--text); font-size: 0.85rem; padding-left: 0.5rem; border-left: 2px solid var(--border); white-space: pre-wrap;">${String(q.answer).replace(/</g, '&lt;')}</div>
+      <div style="color: var(--muted); font-size: 0.72rem; align-self: flex-end;">${new Date(q.timestamp).toLocaleString()}</div>
+    </div>
+  `).join('');
+}
+
 // ============================================================================
 // Boot
 // ============================================================================
 loadStatus();
 refresh();
+loadHistory();
 </script>
 </body>
 </html>

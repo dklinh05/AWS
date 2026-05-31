@@ -9,6 +9,10 @@ resource "aws_cloudfront_origin_access_control" "s3_oac" {
   signing_protocol                  = "sigv4"
 }
 
+locals {
+  api_gateway_domain = replace(aws_apigatewayv2_api.api.api_endpoint, "https://", "")
+}
+
 # ---------------------------------------------------------
 # CloudFront Distribution
 # ---------------------------------------------------------
@@ -25,15 +29,15 @@ resource "aws_cloudfront_distribution" "main" {
     origin_access_control_id = aws_cloudfront_origin_access_control.s3_oac.id
   }
 
-  # Origin 2: EC2 Backend
+  # Origin 2: API Gateway Backend
   origin {
-    domain_name = aws_instance.studybot.public_dns
-    origin_id   = "EC2-Backend"
+    domain_name = local.api_gateway_domain
+    origin_id   = "APIGateway-Backend"
 
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only" # Traffic between CloudFront and EC2 is HTTP on port 80
+      origin_protocol_policy = "https-only" # API Gateway HTTP API only supports HTTPS
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
@@ -57,19 +61,19 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl                = 86400
   }
 
-  # API Route Cache Behaviors (forwards backend requests directly to EC2)
+  # API Route Cache Behaviors (forwards backend requests directly to API Gateway)
   dynamic "ordered_cache_behavior" {
-    for_each = ["/upload", "/query", "/summary", "/flashcards", "/quiz", "/docs/list", "/queries/recent", "/health"]
+    for_each = ["/upload", "/query", "/summary", "/flashcards", "/quiz", "/docs/list", "/docs/list/*", "/queries/recent", "/health"]
     content {
       path_pattern     = ordered_cache_behavior.value
       allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
       cached_methods   = ["GET", "HEAD"]
-      target_origin_id = "EC2-Backend"
+      target_origin_id = "APIGateway-Backend"
 
       # Forward all query strings, headers (like X-User-Id), and cookies
       forwarded_values {
         query_string = true
-        headers      = ["*"]
+        headers      = ["Accept", "Accept-Language", "Authorization", "Content-Type", "Origin", "X-User-Id"]
         cookies {
           forward = "all"
         }

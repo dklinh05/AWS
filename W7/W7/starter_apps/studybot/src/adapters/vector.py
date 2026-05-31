@@ -27,35 +27,82 @@ class BedrockKBVector:
             raise ValueError("VECTOR_BEDROCK_KB_ID must be set for Bedrock KB backend")
         self.kb_id = kb_id
         self.agent_runtime = boto3.client("bedrock-agent-runtime", region_name=region)
+        self.agent_client = boto3.client("bedrock-agent", region_name=region)
 
     def ingest(self, doc_id: str, text: str, metadata: Optional[dict] = None) -> None:
-        # Ingestion is typically S3-event driven. Trigger a manual sync if needed
-        # via StartIngestionJob — but the doc must already be in the KB's S3 source.
-        # This adapter assumes upstream code uploaded to S3 already.
-        pass
+        # Trigger sync of data sources for this Knowledge Base
+        try:
+            resp = self.agent_client.list_data_sources(knowledgeBaseId=self.kb_id)
+            ds_summaries = resp.get("dataSourceSummaries", [])
+            if ds_summaries:
+                ds_id = ds_summaries[0]["dataSourceId"]
+                self.agent_client.start_ingestion_job(
+                    knowledgeBaseId=self.kb_id,
+                    dataSourceId=ds_id
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger("studybot").warning(f"Could not trigger Bedrock KB sync: {e}")
 
     def search(self, query: str, top_k: int = 5, filter: Optional[dict] = None) -> list:
+        # Request a larger pool of results from the API to allow for in-memory filtering
+        api_top_k = top_k * 3 if filter else top_k
         kwargs = {
             "knowledgeBaseId": self.kb_id,
             "retrievalQuery": {"text": query},
             "retrievalConfiguration": {
-                "vectorSearchConfiguration": {"numberOfResults": top_k}
+                "vectorSearchConfiguration": {"numberOfResults": api_top_k}
             },
         }
-        if filter:
-            kwargs["retrievalConfiguration"]["vectorSearchConfiguration"]["filter"] = {
-                "andAll": [{"equals": {"key": k, "value": v}} for k, v in filter.items()]
-            }
+        
+        # We do NOT pass the filter to the Bedrock agent_runtime API to avoid ValidationException
+        # when metadata fields (like user_id) are not indexed/defined in S3 Vectors.
         resp = self.agent_runtime.retrieve(**kwargs)
-        return [
-            {
-                "text": r.get("content", {}).get("text", ""),
-                "doc_id": r.get("metadata", {}).get("doc_id", ""),
-                "score": r.get("score", 0.0),
-                "metadata": r.get("metadata", {}),
+        
+        results = []
+        for r in resp.get("retrievalResults", []):
+            content_text = r.get("content", {}).get("text", "")
+            score = r.get("score", 0.0)
+            
+            # Extract metadata from S3 URI
+            uri = r.get("location", {}).get("s3Location", {}).get("uri", "")
+            extracted_user_id = ""
+            extracted_doc_id = ""
+            if uri.startswith("s3://"):
+                parts = uri[5:].split("/", 2)
+                if len(parts) >= 2:
+                    extracted_user_id = parts[1]
+                    if len(parts) >= 3 and "/" in parts[2]:
+                        extracted_doc_id = parts[2].split("/", 1)[0]
+            
+            metadata = {
+                "user_id": extracted_user_id,
+                "doc_id": extracted_doc_id,
+                "s3_uri": uri
             }
-            for r in resp.get("retrievalResults", [])
-        ]
+            
+            results.append({
+                "text": content_text,
+                "doc_id": extracted_doc_id,
+                "score": score,
+                "metadata": metadata,
+            })
+            
+        # Perform in-memory filtering
+        if filter:
+            filtered_results = []
+            for item in results:
+                match = True
+                for k, v in filter.items():
+                    if k == "user_id" and item["metadata"].get("user_id") != v:
+                        match = False
+                    elif k == "doc_id" and item["doc_id"] != v:
+                        match = False
+                if match:
+                    filtered_results.append(item)
+            return filtered_results[:top_k]
+            
+        return results[:top_k]
 
 
 class LocalVector:

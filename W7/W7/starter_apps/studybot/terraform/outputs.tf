@@ -3,14 +3,9 @@ output "cloudfront_url" {
   value       = "https://${aws_cloudfront_distribution.main.domain_name}"
 }
 
-output "ec2_public_ip" {
-  description = "Public IP of the backend EC2 instance"
-  value       = aws_instance.studybot.public_ip
-}
-
-output "ec2_public_dns" {
-  description = "Public DNS of the backend EC2 instance"
-  value       = aws_instance.studybot.public_dns
+output "api_gateway_url" {
+  description = "Direct HTTPS endpoint of the API Gateway HTTP API"
+  value       = aws_apigatewayv2_api.api.api_endpoint
 }
 
 output "s3_docs_bucket" {

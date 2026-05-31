@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "apprunner_tasks_trust" {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "Service"
-      identifiers = ["ec2.amazonaws.com"]
+      identifiers = ["lambda.amazonaws.com"]
     }
   }
 }
@@ -47,7 +47,13 @@ data "aws_iam_policy_document" "apprunner_permissions" {
     actions   = [
       "bedrock:InvokeModel",
       "bedrock:Converse",
-      "bedrock:ConverseStream"
+      "bedrock:ConverseStream",
+      "bedrock:Retrieve",
+      "bedrock:RetrieveAndGenerate",
+      "bedrock:StartIngestionJob",
+      "bedrock:GetIngestionJob",
+      "bedrock:ListIngestionJobs",
+      "bedrock:ListDataSources"
     ]
     resources = ["*"]
   }
@@ -94,4 +100,9 @@ resource "aws_iam_role_policy" "apprunner_permissions" {
 resource "aws_iam_role_policy_attachment" "ec2_ecr_readonly" {
   role       = aws_iam_role.apprunner_instance_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_vpc_access" {
+  role       = aws_iam_role.apprunner_instance_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }

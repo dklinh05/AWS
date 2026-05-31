@@ -13,7 +13,7 @@ variable "project" {
 variable "team" {
   type        = string
   description = "Team name for tagging"
-  default     = "G1"
+  default     = "G8"
 }
 
 variable "ai_model_id" {
