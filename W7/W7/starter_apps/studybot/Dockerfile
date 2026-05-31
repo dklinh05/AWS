@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Add AWS Lambda Web Adapter for serverless container execution
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
+
 # Copy requirements file first to leverage Docker cache
 COPY requirements.txt .
 
