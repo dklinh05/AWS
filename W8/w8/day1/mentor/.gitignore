@@ -1,0 +1,15 @@
+# Local .terraform directories
+.terraform/
+
+# State files containing sensitive credentials
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Variables files (sensitive vars)
+*.tfvars
+*.tfvars.json
+
+# Crash log files
+crash.log
+crash.*.log
